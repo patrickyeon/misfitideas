@@ -101,7 +101,7 @@ class filebuf(buf):
         return self._end - self._pos
 
     def seek_to(self, to):
-        self._f.seek(to, 1)
+        self._f.seek(to, 0)
     def tell(self):
         return self._f.tell()
     pos = property(tell, seek_to)
