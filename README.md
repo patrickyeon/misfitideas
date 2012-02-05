@@ -6,22 +6,24 @@ destruct.py
 -----------
 Extends Python's struct module, because its format strings seem to force some pretty tedious work. For example, imagine a score record (42 game season) stored in a file that can be handled in C with a data structure like this:
 
-```#pragma pack(1)
+```C
+#pragma pack(1)
 struct scorecard{
     char player_name[40];
-	uint32_t player_id;
-	uint8_t game_points[42];
-	uint32_t ranking;
+    uint32_t player_id;
+    uint8_t game_points[42];
+    uint32_t ranking;
 }
 ```
 
-```data = struct.unpack('=40sI42BI', raw_string)
+```python
+data = struct.unpack('=40sI42BI', raw_string)
 player_name, player_id, games, ranking = data[0], data[1], data[2:-1], data[-1]
 ```
 
 But really, what I want to do there is:
 
-```player_name, player_id, games, ranking = destruct.unpack('=40sI(42B)I', raw_string)```
+`player_name, player_id, games, ranking = destruct.unpack('=40sI(42B)I', raw_string)`
 
 I expect it would get more useful as you see more complex data types. I also treat this as a step towards figuring out what would work for a more comprehensive format description grammar.
 
