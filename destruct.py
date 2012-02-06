@@ -71,12 +71,16 @@ class strbuf(buf):
         return len(self._buf) - self.pos
 
     def seek_to(self, to):
-        self._pos = to
+        if to < 0:
+            raise ValueError('pos must be zero or positive')
+        self._pos = min(to, len(self._buf))
     def tell(self):
         return self._pos
     pos = property(tell, seek_to)
 
     def read(self, size):
+        if size < 0:
+            raise ValueError('size must be zero or positive')
         offset = self.pos
         self.pos = min(offset + size, len(self._buf))
         return buffer(self._buf, offset, size)
@@ -95,18 +99,21 @@ class filebuf(buf):
         self._f.seek(0, 2)
         self._end = self._f.tell()
         self._f.seek(0)
-        self._pos = 0
 
     def __len__(self):
-        return self._end - self._pos
+        return self._end - self.pos
 
     def seek_to(self, to):
+        if to < 0:
+            raise ValueError('pos must be zero or positive')
         self._f.seek(to, 0)
     def tell(self):
         return self._f.tell()
     pos = property(tell, seek_to)
 
     def read(self, size):
+        if size < 0:
+            raise ValueError('size must be zero or positive')
         # TODO something to make sure size bytes are read?
         # TODO buffer map into the file, not create a new string?
         return buffer(self._f.read(size))
