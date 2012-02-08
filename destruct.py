@@ -1,11 +1,10 @@
 import struct as s
 
-#def unpack(fmt, buff):
-#    ''' Extended unpacking, buff needs to be a destruct.buf subclass
-#
-#        Format string is a strict superset of the struct format strings. Use
-#        parens '(' and ')' to delimit lists (arrays).'''
 class Struct:
+    ''' Extended Structs, with fancier format strings!
+
+        Format string is a strict superset of the struct format strings. Use
+        parens '(' and ')' to delimit lists (arrays).'''
     def __init__(self, fmt):
         self.fmt = self.build_fmt(fmt)
 
@@ -61,6 +60,7 @@ class Struct:
         return ret, start
 
     def unpack(self, buff):
+        ''' buff needs to be a destruct.buf sbuclass '''
         return self.rec_unpack(buff, self.fmt)
 
     def rec_unpack(self, buff, fmt_tree):
