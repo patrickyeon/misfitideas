@@ -1,51 +1,79 @@
 import struct as s
 
-def unpack(fmt, buff):
-    ''' Extended unpacking, buff needs to be a destruct.buf subclass
+#def unpack(fmt, buff):
+#    ''' Extended unpacking, buff needs to be a destruct.buf subclass
+#
+#        Format string is a strict superset of the struct format strings. Use
+#        parens '(' and ')' to delimit lists (arrays).'''
+class Struct:
+    def __init__(self, fmt):
+        self.fmt = self.build_fmt(fmt)
 
-        Format string is a strict superset of the struct format strings. Use
-        parens '(' and ')' to delimit lists (arrays).'''
-    order = '@'
-    if fmt[0] in '@=<>!':
-        # going to want to distribute the byte order to sub-strings
-        order, fmt = fmt[0], fmt[1:]
-    ret = []
-    start = 0
-    while start < len(fmt):
-        # any special chars?
-        op = fmt.find('(', start)
-        cl = fmt.find(')', start)
-        if op > -1 and op < cl:
-            # unpack until opening paren, then recurse to handle content inside
-            # the parens
-            subfmt = order + fmt[start:op]
-            start = op + 1 # nobody else needs to see the open paren
-            if s.calcsize(subfmt) > 0:
-                # ret.extend() to flatten the tuple returned by s.unpack()
-                ret.extend(s.unpack(subfmt, buff.read(s.calcsize(subfmt))))
-                # v-- if ever need to see which substrings are going where
-                #ret.append(str(buff.read(s.calcsize(subfmt))))
-            consumed, parsed = unpack(order + fmt[start:], buff)
-            ret.append(parsed)
-            # make sure to account for chars handled
-            start += consumed
-        elif cl > -1:
-            # unpack until close paren, then bump it up the call stack
-            subfmt = order + fmt[start:cl]
-            start = cl + 1
-            if s.calcsize(subfmt) > 0:
-                ret.extend(s.unpack(subfmt, buff.read(s.calcsize(subfmt))))
-                # v-- to see substrings
-                #ret.append(str(buff.read(s.calcsize(subfmt))))
-            return start, ret
-        else:
-            # unpack to the end of the format string
-            subfmt = order + fmt[start:]
-            if s.calcsize(subfmt) > 0:
-                ret.extend(s.unpack(subfmt, buff.read(s.calcsize(subfmt))))
-                #ret.append(str(buff.read(s.calcsize(subfmt))))
-            start = len(fmt)
-    return ret
+    def build_fmt(self, fmt):
+        tree, consumed = self.rec_build(fmt)
+        # TODO if len(fmt) > consumed, there's a problem with the format string
+        #     More to the point, should do some checking to make sure parens
+        #     match, as it stands early closing will truncate the format string
+        #     and too few closing parens will fail in a s.calcsize()
+        return self.rec_build(fmt)[0]
+
+    def rec_build(self, fmt):
+        order = '@'
+        if fmt[0] in '@=<>!':
+            # going to want to distribute the byte order to sub-strings
+            order, fmt = fmt[0], fmt[1:]
+        ret = []
+        start = 0
+        while start < len(fmt):
+            # any special chars?
+            op = fmt.find('(', start)
+            cl = fmt.find(')', start)
+            if op > -1 and op < cl:
+                # unpack until opening paren, then recurse to handle content inside
+                # the parens
+                subfmt = order + fmt[start:op]
+                start = op + 1 # nobody else needs to see the open paren
+                if s.calcsize(subfmt) > 0:
+                    ret.append(s.Struct(subfmt))
+                    # v-- if ever need to see which substrings are going where
+                    #ret.append(subfmt)
+                parsed, consumed = self.rec_build(order + fmt[start:])
+                ret.append(parsed)
+                # make sure to account for chars handled
+                start += consumed
+            elif cl > -1:
+                # unpack until close paren, then bump it up the call stack
+                subfmt = order + fmt[start:cl]
+                start = cl + 1
+                if s.calcsize(subfmt) > 0:
+                    ret.append(s.Struct(subfmt))
+                    # v-- to see substrings
+                    #ret.append(subfmt)
+                return ret, start
+            else:
+                # unpack to the end of the format string
+                subfmt = order + fmt[start:]
+                if s.calcsize(subfmt) > 0:
+                    ret.append(s.Struct(subfmt))
+                    #ret.append(str(buff.read(s.calcsize(subfmt))))
+                start = len(fmt)
+        # FIXME start will be off by one if caller provided the byte order
+        return ret, start
+
+    def unpack(self, buff):
+        return self.rec_unpack(buff, self.fmt)
+
+    def rec_unpack(self, buff, fmt_tree):
+        ret = []
+        for st in fmt_tree:
+            if isinstance(st, s.Struct):
+                ret.extend(st.unpack(str(buff.read(st.size))))
+            else:
+                ret.append(self.rec_unpack(buff, st))
+        return ret
+
+def unpack(fmt, buff):
+    return Struct(fmt).unpack(buff)
 
 class buf(object):
     ''' Buffers that work for me. No relation to the native buffer.
