@@ -9,14 +9,14 @@ class Struct:
         self.fmt = self.build_fmt(fmt)
 
     def build_fmt(self, fmt):
-        tree, consumed = self.rec_build(fmt)
+        tree, consumed = self._rec_build(fmt)
         # TODO if len(fmt) > consumed, there's a problem with the format string
         #     More to the point, should do some checking to make sure parens
         #     match, as it stands early closing will truncate the format string
         #     and too few closing parens will fail in a s.calcsize()
-        return self.rec_build(fmt)[0]
+        return tree
 
-    def rec_build(self, fmt):
+    def _rec_build(self, fmt):
         order = '@'
         if fmt[0] in '@=<>!':
             # going to want to distribute the byte order to sub-strings
@@ -28,15 +28,15 @@ class Struct:
             op = fmt.find('(', start)
             cl = fmt.find(')', start)
             if op > -1 and op < cl:
-                # unpack until opening paren, then recurse to handle content inside
-                # the parens
+                # unpack until opening paren, then recurse to handle content
+                # inside the parens
                 subfmt = order + fmt[start:op]
                 start = op + 1 # nobody else needs to see the open paren
                 if s.calcsize(subfmt) > 0:
                     ret.append(s.Struct(subfmt))
                     # v-- if ever need to see which substrings are going where
                     #ret.append(subfmt)
-                parsed, consumed = self.rec_build(order + fmt[start:])
+                parsed, consumed = self._rec_build(order + fmt[start:])
                 ret.append(parsed)
                 # make sure to account for chars handled
                 start += consumed
@@ -60,16 +60,19 @@ class Struct:
         return ret, start
 
     def unpack(self, buff):
-        ''' buff needs to be a destruct.buf sbuclass '''
-        return self.rec_unpack(buff, self.fmt)
+        # buff needs to be a destruct.buf subclass
+        if not issubclass(buff.__class__, buf):
+            buff = strbuf(buff)
+        return self._rec_unpack(buff, self.fmt)
 
-    def rec_unpack(self, buff, fmt_tree):
+    def _rec_unpack(self, buff, fmt_tree):
+        # can pre-allocate ret, if it makes a difference
         ret = []
         for st in fmt_tree:
-            if isinstance(st, s.Struct):
-                ret.extend(st.unpack(str(buff.read(st.size))))
+            if hasattr(st, 'unpack'):
+                ret.extend(st.unpack(buff.read(st.size)))
             else:
-                ret.append(self.rec_unpack(buff, st))
+                ret.append(self._rec_unpack(buff, st))
         return ret
 
 def unpack(fmt, buff):
