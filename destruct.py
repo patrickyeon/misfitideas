@@ -9,14 +9,14 @@ class Struct:
         self.fmt = self.build_fmt(fmt)
 
     def build_fmt(self, fmt):
-        tree, consumed = self._rec_build(fmt)
+        tree, consumed = self._rec_build(fmt, 0)
         # TODO if len(fmt) > consumed, there's a problem with the format string
         #     More to the point, should do some checking to make sure parens
         #     match, as it stands early closing will truncate the format string
         #     and too few closing parens will fail in a s.calcsize()
         return tree
 
-    def _rec_build(self, fmt):
+    def _rec_build(self, fmt, depth):
         order = '@'
         if fmt[0] in '@=<>!':
             # going to want to distribute the byte order to sub-strings
@@ -27,6 +27,9 @@ class Struct:
             # any special chars?
             op = fmt.find('(', start)
             cl = fmt.find(')', start)
+            if op > -1 and cl == -1:
+                # don't like this here, but need to check for now
+                raise Exception('not enough parens!')
             if op > -1 and op < cl:
                 # unpack until opening paren, then recurse to handle content
                 # inside the parens
@@ -36,11 +39,14 @@ class Struct:
                     ret.append(s.Struct(subfmt))
                     # v-- if ever need to see which substrings are going where
                     #ret.append(subfmt)
-                parsed, consumed = self._rec_build(order + fmt[start:])
+                parsed, consumed = self._rec_build(order + fmt[start:],
+                                                   depth + 1)
                 ret.append(parsed)
                 # make sure to account for chars handled
                 start += consumed
             elif cl > -1:
+                if depth == 0:
+                    raise Exception('too many parens!')
                 # unpack until close paren, then bump it up the call stack
                 subfmt = order + fmt[start:cl]
                 start = cl + 1
@@ -56,6 +62,8 @@ class Struct:
                     ret.append(s.Struct(subfmt))
                     #ret.append(str(buff.read(s.calcsize(subfmt))))
                 start = len(fmt)
+        if depth > 0:
+            raise Exception('not enough parens!')
         # FIXME start will be off by one if caller provided the byte order
         return ret, start
 
