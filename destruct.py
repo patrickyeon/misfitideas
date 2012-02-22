@@ -1,4 +1,5 @@
 import struct as s
+from collections import OrderedDict
 
 class Struct:
     ''' Extended Structs, with fancier format strings!
@@ -17,7 +18,7 @@ class Struct:
         return tree
 
     def _rec_build(self, order, fmt, depth):
-        ret = []
+        ret = foodict()
         start = 0
         while start < len(fmt):
             # any special chars?
@@ -70,12 +71,15 @@ class Struct:
 
     def _rec_unpack(self, buff, fmt_tree):
         # can pre-allocate ret, if it makes a difference
-        ret = []
-        for st in fmt_tree:
+        ret = foodict()
+        for k in fmt_tree:
+            st = fmt_tree[k]
             if hasattr(st, 'unpack'):
-                ret.extend(st.unpack(buff.read(st.size)))
+                unpacked = st.unpack(buff.read(st.size))
             else:
-                ret.append(self._rec_unpack(buff, st))
+                unpacked = self._rec_unpack(buff, st)
+            if len(unpacked) > 0:
+                ret.append(unpacked)
         return ret
 
 def unpack(fmt, buff):
@@ -151,3 +155,7 @@ class filebuf(buf):
         # TODO something to make sure size bytes are read?
         # TODO buffer map into the file, not create a new string?
         return buffer(self._f.read(size))
+
+class foodict(OrderedDict):
+    def append(self, val):
+        self.__setitem__(len(self), val)
