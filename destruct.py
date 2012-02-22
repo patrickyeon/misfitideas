@@ -9,18 +9,14 @@ class Struct:
         self.fmt = self.build_fmt(fmt)
 
     def build_fmt(self, fmt):
-        tree, consumed = self._rec_build(fmt, 0)
-        # TODO if len(fmt) > consumed, there's a problem with the format string
-        #     More to the point, should do some checking to make sure parens
-        #     match, as it stands early closing will truncate the format string
-        #     and too few closing parens will fail in a s.calcsize()
-        return tree
-
-    def _rec_build(self, fmt, depth):
         order = '@'
         if fmt[0] in '@=<>!':
             # going to want to distribute the byte order to sub-strings
             order, fmt = fmt[0], fmt[1:]
+        tree, consumed = self._rec_build(order, fmt, 0)
+        return tree
+
+    def _rec_build(self, order, fmt, depth):
         ret = []
         start = 0
         while start < len(fmt):
@@ -33,13 +29,13 @@ class Struct:
             if op > -1 and op < cl:
                 # unpack until opening paren, then recurse to handle content
                 # inside the parens
-                subfmt = order + fmt[start:op]
+                subfmt = fmt[start:op]
                 start = op + 1 # nobody else needs to see the open paren
                 if s.calcsize(subfmt) > 0:
                     ret.append(s.Struct(subfmt))
                     # v-- if ever need to see which substrings are going where
                     #ret.append(subfmt)
-                parsed, consumed = self._rec_build(order + fmt[start:],
+                parsed, consumed = self._rec_build(order, fmt[start:],
                                                    depth + 1)
                 ret.append(parsed)
                 # make sure to account for chars handled
@@ -64,7 +60,6 @@ class Struct:
                 start = len(fmt)
         if depth > 0:
             raise Exception('not enough parens!')
-        # FIXME start will be off by one if caller provided the byte order
         return ret, start
 
     def unpack(self, buff):
