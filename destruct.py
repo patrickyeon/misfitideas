@@ -159,3 +159,11 @@ class filebuf(buf):
 class foodict(OrderedDict):
     def append(self, val):
         self.__setitem__(len(self), val)
+
+    def __repr__(self):
+        return '{' + ', '.join([self._fmt(k, self[k]) for k in self]) + '}'
+
+    def _fmt(self, k, v):
+        if isinstance(k, int):
+            return str(v)
+        return k + ': ' + str(v)
