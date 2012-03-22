@@ -25,66 +25,58 @@ class Struct:
             ctx.end = lexed.txt[ctx.ind]
             ctx.ind += 1
         return self.rec_lex(lexed, ctx, cuts)
-        
+
     def rec_lex(self, lexed, ctx, cuts):
         ret = odict()
-        # TODO make lexer include a (len(txt), None) pair, then this is a for
-        # loop
         # TODO ctx needs to fork() everywhere
-        try:
-            end, close = cuts.next()
-        except(StopIteration):
-            end, close = len(lexed.txt) + 1, None
-        subfmt = lexed.txt[ctx.ind:end]
+        for end, close in cuts:
+            subfmt = lexed.txt[ctx.ind:end]
 
-        if ctx.match == ']':
-            if close != ']':
-                raise Exception('unclosed bracket')
-            ctx.ind = end + 1
-            ctx.dep -= 1
-            return subfmt
+            if ctx.match == ']':
+                # subfmt is a name, we just return it
+                if close != ']':
+                    raise Exception('unclosed bracket')
+                ctx.ind = end + 1
+                ctx.dep -= 1
+                return subfmt
 
-        elif close == '[':
-            subctx = ctx.fork()
-            subctx.ind = end + 1
-            subctx.dep += 1
-            subctx.match = lexed.delims[close]
-            name = self.rec_lex(lexed, subctx, cuts)
-            ctx.ind = subctx.ind
-            ret[name] = ret[len(ret)]
-            del ret[len(ret) - 1]
+            elif close == '[':
+                # get the name, apply it to the last member of ret
+                subctx = ctx.fork()
+                subctx.ind = end + 1
+                subctx.dep += 1
+                subctx.match = lexed.delims[close]
+                name = self.rec_lex(lexed, subctx, cuts)
+                ctx.ind = subctx.ind
+                # this will fail if the member already has a name
+                # FIXME that is correct, but it won't be friendly
+                ret[name] = ret[len(ret)]
+                del ret[len(ret) - 1]
 
-        elif close is None:
-            if ctx.dep != 0:
-                raise Exception('unclosed parens')
-            if s.calcsize(ctx.end + subfmt) > 0:
-                ret.append(s.struct(ctx.end + subfmt))
-            return ret
+            elif close is None:
+                # at the end of the format string, so should not be nested at
+                # all
+                if ctx.dep != 0:
+                    raise Exception('unclosed parens')
+                if s.calcsize(ctx.end + subfmt) > 0:
+                    ret.append(s.struct(ctx.end + subfmt))
+                return ret
 
-        elif subfmt.isdigit():
-            ctx.ind = end + 1
-            ctx.dep += 1
-            ctx.match = lexed.delims[close]
-            ret.append(list(self.rec_lex(lexed, ctx, cuts)) * int(subfmt))
+            elif subfmt.isdigit():
+                # subfmt is a repetition count for the next portion of the
+                # format string
+                ctx.ind = end + 1
+                ctx.dep += 1
+                ctx.match = lexed.delims[close]
+                ret.append(list(self.rec_lex(lexed, ctx, cuts)) * int(subfmt))
 
-        elif close == ctx.match:
-            if s.calcsize(subfmt) > 0:
-                ret.append(ctx.end + subfmt)
-            ctx.ind = end + 1
-            ctx.dep -= 1
-            return ret
-
-        # NOTE I think the rest of this is garbage
-        if lexed.txt[ctx.ind].isdigit():
-            ret.append(self.lex_list(lexed, ctx, cuts))
-            i = ctx.ind + 1
-            while not lexed.txt[i].isdigit():
-                i += 1
-            reps = int(lexed.txt[ctx.ind:i])
-        subfmt = ctx.end + lexed.txt[0:lexed.cuts[0][0]]
-        if len(s.calcsize(subfmt) > 0):
-            ret.append(subfmt)
-
+            elif close == ctx.match:
+                # we are about to pop out of our current level
+                if s.calcsize(subfmt) > 0:
+                    ret.append(ctx.end + subfmt)
+                ctx.ind = end + 1
+                ctx.dep -= 1
+                return ret
 
     def _rec_build(self, order, fmt, depth):
         ret = odict()
@@ -161,7 +153,7 @@ class buf(object):
     def _nie(self, foo=None):
         raise NotImplementedError
     pos = property(_nie, _nie)
-    
+
     def read(self, size):
         ''' returns a [native] buffer of (at least?) size bytes.'''
         raise NotImplementedError
@@ -241,7 +233,11 @@ class context:
     def __init__(self, index=0, depth=0, endianness='@'):
         self.ind, self.dep, self.end = index, depth, endianness
         self.match = None
-    # TODO implement .fork()
+
+    def fork(self):
+        ret = context(self.ind, self.dep, self.end)
+        ret.match = self.match
+        return ret
 
 class lexer:
     def __init__(self, txt, comment='#', delims='()[]'):
@@ -249,6 +245,7 @@ class lexer:
         self.txt = self.txt.replace(' ', '').replace('\n', '').replace('\t', '')
         self.cuts = [(n, char) for n, char in enumerate(self.txt)
                      if char in delims]
+        self.cuts.append[(len(self.txt), None)]
         self.delims = dict(zip(delims[::2], delims[1::2]))
 
     def strip_comments(self, txt, comment='#'):
