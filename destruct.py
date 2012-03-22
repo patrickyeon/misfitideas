@@ -14,11 +14,80 @@ class Struct:
         if fmt[0] in '@=<>!':
             # going to want to distribute the byte order to sub-strings
             order, fmt = fmt[0], fmt[1:]
-        tree, consumed = self._rec_build(order, fmt, 0)
+        tree, consumed = self._rec_build(order, lexer(fmt), 0)
         return tree
 
+    def lex_build(self, lexed):
+        cuts = iter(lexed.cuts)
+        ctx = context()
+        if lexed.txt[ctx.ind] in '@=<>!':
+            # going to want to distribute the byte order to sub-strings
+            ctx.end = lexed.txt[ctx.ind]
+            ctx.ind += 1
+        return self.rec_lex(lexed, ctx, cuts)
+        
+    def rec_lex(self, lexed, ctx, cuts):
+        ret = odict()
+        # TODO make lexer include a (len(txt), None) pair, then this is a for
+        # loop
+        # TODO ctx needs to fork() everywhere
+        try:
+            end, close = cuts.next()
+        except(StopIteration):
+            end, close = len(lexed.txt) + 1, None
+        subfmt = lexed.txt[ctx.ind:end]
+
+        if ctx.match == ']':
+            if close != ']':
+                raise Exception('unclosed bracket')
+            ctx.ind = end + 1
+            ctx.dep -= 1
+            return subfmt
+
+        elif close == '[':
+            subctx = ctx.fork()
+            subctx.ind = end + 1
+            subctx.dep += 1
+            subctx.match = lexed.delims[close]
+            name = self.rec_lex(lexed, subctx, cuts)
+            ctx.ind = subctx.ind
+            ret[name] = ret[len(ret)]
+            del ret[len(ret) - 1]
+
+        elif close is None:
+            if ctx.dep != 0:
+                raise Exception('unclosed parens')
+            if s.calcsize(ctx.end + subfmt) > 0:
+                ret.append(s.struct(ctx.end + subfmt))
+            return ret
+
+        elif subfmt.isdigit():
+            ctx.ind = end + 1
+            ctx.dep += 1
+            ctx.match = lexed.delims[close]
+            ret.append(list(self.rec_lex(lexed, ctx, cuts)) * int(subfmt))
+
+        elif close == ctx.match:
+            if s.calcsize(subfmt) > 0:
+                ret.append(ctx.end + subfmt)
+            ctx.ind = end + 1
+            ctx.dep -= 1
+            return ret
+
+        # NOTE I think the rest of this is garbage
+        if lexed.txt[ctx.ind].isdigit():
+            ret.append(self.lex_list(lexed, ctx, cuts))
+            i = ctx.ind + 1
+            while not lexed.txt[i].isdigit():
+                i += 1
+            reps = int(lexed.txt[ctx.ind:i])
+        subfmt = ctx.end + lexed.txt[0:lexed.cuts[0][0]]
+        if len(s.calcsize(subfmt) > 0):
+            ret.append(subfmt)
+
+
     def _rec_build(self, order, fmt, depth):
-        ret = foodict()
+        ret = odict()
         start = 0
         while start < len(fmt):
             # any special chars?
@@ -71,7 +140,7 @@ class Struct:
 
     def _rec_unpack(self, buff, fmt_tree):
         # can pre-allocate ret, if it makes a difference
-        ret = foodict()
+        ret = odict()
         for k in fmt_tree:
             st = fmt_tree[k]
             if hasattr(st, 'unpack'):
@@ -156,7 +225,7 @@ class filebuf(buf):
         # TODO buffer map into the file, not create a new string?
         return buffer(self._f.read(size))
 
-class foodict(OrderedDict):
+class odict(OrderedDict):
     def append(self, val):
         self.__setitem__(len(self), val)
 
@@ -167,3 +236,24 @@ class foodict(OrderedDict):
         if isinstance(k, int):
             return str(v)
         return k + ': ' + str(v)
+
+class context:
+    def __init__(self, index=0, depth=0, endianness='@'):
+        self.ind, self.dep, self.end = index, depth, endianness
+        self.match = None
+    # TODO implement .fork()
+
+class lexer:
+    def __init__(self, txt, comment='#', delims='()[]'):
+        self.txt = self.strip_comments(txt, comment)
+        self.txt = self.txt.replace(' ', '').replace('\n', '').replace('\t', '')
+        self.cuts = [(n, char) for n, char in enumerate(self.txt)
+                     if char in delims]
+        self.delims = dict(zip(delims[::2], delims[1::2]))
+
+    def strip_comments(self, txt, comment='#'):
+        lines = txt.split('\n')
+        for i, line in enumerate(lines):
+            if comment in line:
+                lines[i] = line[:line.index(comment)]
+        return '\n'.join(lines)
