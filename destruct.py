@@ -47,6 +47,16 @@ class Struct:
                 ret[name] = ret[len(ret) - 1]
                 del ret[len(ret) - 2]
 
+            elif close == '(':
+                if s.calcsize(subfmt) > 0:
+                    ret.extend(self._struct(ctx.end, subfmt))
+                subctx = ctx.fork()
+                subctx.ind = end + 1
+                subctx.dep += 1
+                subctx.match = lexed.delims[close]
+                ret.append(self.rec_lex(lexed, subctx, cuts))
+                ctx.ind = subctx.ind
+
             elif close is None:
                 # at the end of the format string, so should not be nested at
                 # all
