@@ -9,14 +9,6 @@ class Struct:
     def __init__(self, fmt):
         self.fmt = self.lex_build(lexer(fmt))
 
-    def build_fmt(self, fmt):
-        order = '@'
-        if fmt[0] in '@=<>!':
-            # going to want to distribute the byte order to sub-strings
-            order, fmt = fmt[0], fmt[1:]
-        tree, consumed = self._rec_build(order, lexer(fmt), 0)
-        return tree
-
     def lex_build(self, lexed):
         cuts = iter(lexed.cuts)
         ctx = context()
@@ -81,52 +73,6 @@ class Struct:
                 ctx.ind = end + 1
                 ctx.dep -= 1
                 return ret
-
-    def _rec_build(self, order, fmt, depth):
-        ret = odict()
-        start = 0
-        while start < len(fmt):
-            # any special chars?
-            op = fmt.find('(', start)
-            cl = fmt.find(')', start)
-            if op > -1 and cl == -1:
-                # don't like this here, but need to check for now
-                raise Exception('not enough parens!')
-            if op > -1 and op < cl:
-                # unpack until opening paren, then recurse to handle content
-                # inside the parens
-                subfmt = fmt[start:op]
-                start = op + 1 # nobody else needs to see the open paren
-                if s.calcsize(subfmt) > 0:
-                    ret.append(s.Struct(subfmt))
-                    # v-- if ever need to see which substrings are going where
-                    #ret.append(subfmt)
-                parsed, consumed = self._rec_build(order, fmt[start:],
-                                                   depth + 1)
-                ret.append(parsed)
-                # make sure to account for chars handled
-                start += consumed
-            elif cl > -1:
-                if depth == 0:
-                    raise Exception('too many parens!')
-                # unpack until close paren, then bump it up the call stack
-                subfmt = order + fmt[start:cl]
-                start = cl + 1
-                if s.calcsize(subfmt) > 0:
-                    ret.append(s.Struct(subfmt))
-                    # v-- to see substrings
-                    #ret.append(subfmt)
-                return ret, start
-            else:
-                # unpack to the end of the format string
-                subfmt = order + fmt[start:]
-                if s.calcsize(subfmt) > 0:
-                    ret.append(s.Struct(subfmt))
-                    #ret.append(str(buff.read(s.calcsize(subfmt))))
-                start = len(fmt)
-        if depth > 0:
-            raise Exception('not enough parens!')
-        return ret, start
 
     def unpack(self, buff):
         # buff needs to be a destruct.buf subclass
