@@ -198,6 +198,10 @@ class filebuf(buf):
         return buffer(self._f.read(size))
 
 class odict(OrderedDict):
+    @staticmethod
+    def from_list(ls):
+        return odict(zip(range(len(ls)), ls))
+
     def append(self, val):
         self.__setitem__(len(self), val)
 
