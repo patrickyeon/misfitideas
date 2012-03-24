@@ -34,7 +34,7 @@ class Struct:
 
             elif close == '[':
                 if s.calcsize(subfmt) > 0:
-                    ret.append(s.Struct(ctx.end + subfmt))
+                    ret.extend(self._struct(ctx.end, subfmt))
                 # get the name, apply it to the last member of ret
                 subctx = ctx.fork()
                 subctx.ind = end + 1
@@ -53,7 +53,7 @@ class Struct:
                 if ctx.dep != 0:
                     raise Exception('unclosed parens')
                 if s.calcsize(ctx.end + subfmt) > 0:
-                    ret.append(s.Struct(ctx.end + subfmt))
+                    ret.extend(self._struct(ctx.end, subfmt))
                 return ret
 
             elif subfmt.isdigit():
@@ -69,10 +69,27 @@ class Struct:
             elif close == ctx.match:
                 # we are about to pop out of our current level
                 if s.calcsize(subfmt) > 0:
-                    ret.append(s.Struct(ctx.end + subfmt))
+                    ret.extend(self._struct(ctx.end, subfmt))
                 ctx.ind = end + 1
                 ctx.dep -= 1
                 return ret
+
+    def _struct(self, endian, fmt):
+        # not pretty, but can be improved later
+        ret = []
+        count = 0
+        for c in fmt:
+            if c.isdigit():
+                count = 10 * count + int(c)
+            else:
+                if count == 0:
+                    count = 1
+                if c == 's':
+                    ret.append(s.Struct(endian + str(count) + c))
+                else:
+                    ret.extend([s.Struct(endian + c)] * count)
+                count = 0
+        return ret
 
     def unpack(self, buff):
         # buff needs to be a destruct.buf subclass
@@ -90,6 +107,9 @@ class Struct:
             else:
                 unpacked = self._rec_unpack(buff, st)
             if len(unpacked) > 0:
+                # TODO ugly shit here, also ther may be legit cases for this
+                if type(unpacked) is tuple and len(unpacked) == 1:
+                    unpacked = unpacked[0]
                 ret[k] = unpacked
         return ret
 
@@ -170,6 +190,10 @@ class filebuf(buf):
 class odict(OrderedDict):
     def append(self, val):
         self.__setitem__(len(self), val)
+
+    def extend(self, ls):
+        for i in ls:
+            self.append(i)
 
     def __repr__(self):
         return '{' + ', '.join([self._fmt(k, self[k]) for k in self]) + '}'

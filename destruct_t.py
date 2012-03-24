@@ -66,11 +66,14 @@ class unpackTests(TestCase):
         self.buf = d.strbuf(self.teststr)
 
     def test_string(self):
-        self.assertEqual(d.unpack('=40s', self.buf),
-                         ['Jonny Normal' + (28 * '\x00')])
+        longstr = d.odict()
+        longstr.append('Jonny Normal' + (28 * '\x00'))
+        self.assertEqual(d.unpack('=40s', self.buf), longstr)
         self.assertEqual(self.buf.pos, 40)
         self.buf.pos = 0
-        self.assertEqual(d.unpack('=5s', self.buf), ['Jonny'])
+        shortstr = d.odict()
+        shortstr.append('Jonny')
+        self.assertEqual(d.unpack('=5s', self.buf), shortstr)
 
     def test_nested_string(self):
         self.assertEqual(d.unpack('=(((s)2s)2s)s(s(5s))', self.buf),
@@ -79,9 +82,14 @@ class unpackTests(TestCase):
 
     def test_numbers(self):
         self.buf.pos = 40
-        self.assertEqual(d.unpack('<I', self.buf), [0x12e])
+        expected = d.odict()
+        expected.append(0x12e)
+        self.assertEqual(d.unpack('<I', self.buf), expected)
+        
         self.buf.pos = 40
-        self.assertEqual(d.unpack('>I', self.buf), [0x2e010000])
+        del expected[0]
+        expected.append(0x2e010000)
+        self.assertEqual(d.unpack('>I', self.buf), expected)
 
     def test_endiannes(self):
         # make sure endianness distributes through the call stack
