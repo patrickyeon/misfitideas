@@ -2,6 +2,8 @@ from unittest import TestCase
 import destruct as d
 import struct as s
 
+ls_odict = d.odict.from_list
+
 class strbufTests(TestCase):
     def setUp(self):
         self.teststr = 'In God we trust. The rest, we test!'
@@ -67,50 +69,49 @@ class unpackTests(TestCase):
 
     def test_string(self):
         self.assertEqual(d.unpack('=40s', self.buf),
-                         d.odict([(0, 'Jonny Normal' + (28 * '\x00'))]))
+                         ls_odict(['Jonny Normal' + (28 * '\x00')]))
         self.assertEqual(self.buf.pos, 40)
         self.buf.pos = 0
         self.assertEqual(d.unpack('=5s', self.buf),
-                         d.odict([(0, 'Jonny')]))
+                         ls_odict(['Jonny']))
 
     def test_nested_string(self):
         self.assertEqual(d.unpack('=(((s)2s)2s)s(s(5s))', self.buf),
-                         d.odict([(0, d.odict([(0, d.odict([(0, d.odict([(0,
-                                                                          'J')])),
-                                                            (1, 'on')])),
-                                               (1, 'ny')])),
-                                  (1, ' '),
-                                  (2, d.odict([(0, 'N'),
-                                               (1, d.odict([(0, 'ormal')]))]))]))
+                         ls_odict([ls_odict([ls_odict([ls_odict(['J']),
+                                                       'on']),
+                                             'ny']),
+                                   ' ',
+                                   ls_odict(['N',
+                                             ls_odict(['ormal'])
+                                            ])
+                                  ]))
         # {{{{J}, on}, ny}, ' ', {N, {ormal}}}
         self.assertEqual(self.buf.pos, 12)
 
     def test_numbers(self):
         self.buf.pos = 40
-        self.assertEqual(d.unpack('<I', self.buf), d.odict([(0, 0x12e)]))
+        self.assertEqual(d.unpack('<I', self.buf), ls_odict([0x12e]))
         self.buf.pos = 40
-        self.assertEqual(d.unpack('>I', self.buf), d.odict([(0, 0x2e010000)]))
+        self.assertEqual(d.unpack('>I', self.buf), ls_odict([0x2e010000]))
 
     def test_endiannes(self):
         # make sure endianness distributes through the call stack
         self.buf.pos = 44
         self.assertEqual(d.unpack('<H((HH)H)', self.buf),
-                         d.odict([(0, 0x100),
-                                  (1, d.odict([(0, d.odict([(0, 0x0505),
-                                                            (1, 0x0810)])),
-                                               (1, 0x18)]))]))
+                         ls_odict([0x100,
+                                   ls_odict([ls_odict([0x0505, 0x0810]),
+                                             0x18])
+                                  ]))
         self.buf.pos = 44
         self.assertEqual(d.unpack('>H((HH)H)', self.buf),
-                         d.odict([(0, 0x1),
-                                  (1, d.odict([(0, d.odict([(0, 0x0505),
-                                                            (1, 0x1008)])),
-                                               (1, 0x1800)]))]))
+                         ls_odict([0x1,
+                                   ls_odict([ls_odict([0x0505, 0x1008]),
+                                             0x1800])
+                                  ]))
 
     def test_combo(self):
         name, p_id, points, rank = d.unpack('<40s I (42B) I', self.buf).values()
         self.assertEqual(name, 'Jonny Normal' + (28 * '\x00'))
         self.assertEqual(p_id, 0x12e)
-        self.assertEqual(points,
-                         d.odict(zip(xrange(99),
-                                     [0, 1, 5, 5, 16, 8, 24] + ([0] * 35))))
+        self.assertEqual(points, ls_odict([0, 1, 5, 5, 16, 8, 24] + ([0] * 35)))
         self.assertEqual(rank, 4)
