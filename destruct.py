@@ -82,7 +82,7 @@ class Struct:
 
     def _rec_unpack(self, buff, fmt_tree):
         # can pre-allocate ret, if it makes a difference
-        ret = dict()
+        ret = odict()
         for k in fmt_tree:
             st = fmt_tree[k]
             if hasattr(st, 'unpack'):
