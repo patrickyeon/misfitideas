@@ -7,18 +7,83 @@ class Struct:
         Format string is a strict superset of the struct format strings. Use
         parens '(' and ')' to delimit lists (arrays).'''
     def __init__(self, fmt):
-        self.fmt = self.build_fmt(fmt)
+        self.fmt = self.lex_build(lexer(fmt))
 
     def build_fmt(self, fmt):
         order = '@'
         if fmt[0] in '@=<>!':
             # going to want to distribute the byte order to sub-strings
             order, fmt = fmt[0], fmt[1:]
-        tree, consumed = self._rec_build(order, fmt, 0)
+        tree, consumed = self._rec_build(order, lexer(fmt), 0)
         return tree
 
+    def lex_build(self, lexed):
+        cuts = iter(lexed.cuts)
+        ctx = context()
+        if lexed.txt[ctx.ind] in '@=<>!':
+            # going to want to distribute the byte order to sub-strings
+            ctx.end = lexed.txt[ctx.ind]
+            ctx.ind += 1
+        return self.rec_lex(lexed, ctx, cuts)
+
+    def rec_lex(self, lexed, ctx, cuts):
+        ret = odict()
+        # TODO ctx needs to fork() everywhere
+        for end, close in cuts:
+            subfmt = lexed.txt[ctx.ind:end]
+
+            if ctx.match == ']':
+                # subfmt is a name, we just return it
+                if close != ']':
+                    raise Exception('unclosed bracket')
+                ctx.ind = end + 1
+                ctx.dep -= 1
+                return subfmt
+
+            elif close == '[':
+                if s.calcsize(subfmt) > 0:
+                    ret.append(s.Struct(ctx.end + subfmt))
+                # get the name, apply it to the last member of ret
+                subctx = ctx.fork()
+                subctx.ind = end + 1
+                subctx.dep += 1
+                subctx.match = lexed.delims[close]
+                name = self.rec_lex(lexed, subctx, cuts)
+                ctx.ind = subctx.ind
+                # this will fail if the member already has a name
+                # FIXME that is correct, but it won't be friendly
+                ret[name] = ret[len(ret) - 1]
+                del ret[len(ret) - 2]
+
+            elif close is None:
+                # at the end of the format string, so should not be nested at
+                # all
+                if ctx.dep != 0:
+                    raise Exception('unclosed parens')
+                if s.calcsize(ctx.end + subfmt) > 0:
+                    ret.append(s.Struct(ctx.end + subfmt))
+                return ret
+
+            elif subfmt.isdigit():
+                # subfmt is a repetition count for the next portion of the
+                # format string
+                ctx.ind = end + 1
+                ctx.dep += 1
+                ctx.match = lexed.delims[close]
+                repeated = self.rec_lex(lexed, ctx, cuts)
+                for i in range(int(subfmt)):
+                    ret.append(repeated)
+
+            elif close == ctx.match:
+                # we are about to pop out of our current level
+                if s.calcsize(subfmt) > 0:
+                    ret.append(s.Struct(ctx.end + subfmt))
+                ctx.ind = end + 1
+                ctx.dep -= 1
+                return ret
+
     def _rec_build(self, order, fmt, depth):
-        ret = foodict()
+        ret = odict()
         start = 0
         while start < len(fmt):
             # any special chars?
@@ -71,7 +136,7 @@ class Struct:
 
     def _rec_unpack(self, buff, fmt_tree):
         # can pre-allocate ret, if it makes a difference
-        ret = foodict()
+        ret = dict()
         for k in fmt_tree:
             st = fmt_tree[k]
             if hasattr(st, 'unpack'):
@@ -79,7 +144,7 @@ class Struct:
             else:
                 unpacked = self._rec_unpack(buff, st)
             if len(unpacked) > 0:
-                ret.append(unpacked)
+                ret[k] = unpacked
         return ret
 
 def unpack(fmt, buff):
@@ -92,7 +157,7 @@ class buf(object):
     def _nie(self, foo=None):
         raise NotImplementedError
     pos = property(_nie, _nie)
-    
+
     def read(self, size):
         ''' returns a [native] buffer of (at least?) size bytes.'''
         raise NotImplementedError
@@ -156,7 +221,7 @@ class filebuf(buf):
         # TODO buffer map into the file, not create a new string?
         return buffer(self._f.read(size))
 
-class foodict(OrderedDict):
+class odict(OrderedDict):
     def append(self, val):
         self.__setitem__(len(self), val)
 
@@ -167,3 +232,29 @@ class foodict(OrderedDict):
         if isinstance(k, int):
             return str(v)
         return k + ': ' + str(v)
+
+class context:
+    def __init__(self, index=0, depth=0, endianness='@'):
+        self.ind, self.dep, self.end = index, depth, endianness
+        self.match = None
+
+    def fork(self):
+        ret = context(self.ind, self.dep, self.end)
+        ret.match = self.match
+        return ret
+
+class lexer:
+    def __init__(self, txt, comment='#', delims='()[]'):
+        self.txt = self.strip_comments(txt, comment)
+        self.txt = self.txt.replace(' ', '').replace('\n', '').replace('\t', '')
+        self.cuts = [(n, char) for n, char in enumerate(self.txt)
+                     if char in delims]
+        self.cuts.append((len(self.txt), None))
+        self.delims = dict(zip(delims[::2], delims[1::2]))
+
+    def strip_comments(self, txt, comment='#'):
+        lines = txt.split('\n')
+        for i, line in enumerate(lines):
+            if comment in line:
+                lines[i] = line[:line.index(comment)]
+        return '\n'.join(lines)
