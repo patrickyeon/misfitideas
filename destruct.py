@@ -5,7 +5,10 @@ class Struct:
     ''' Extended Structs, with fancier format strings!
 
         Format string is a strict superset of the struct format strings. Use
-        parens '(' and ')' to delimit lists (arrays).'''
+        parens '(' and ')' to delimit lists (arrays). Use brackets '[' and ']'
+        to enclose a name for the immediately previous 'parse unit'. Names
+        should (I would say must, but it's not properly enforced yet) be
+        alphanumeric.'''
     def __init__(self, fmt):
         self.fmt = self.lex_build(lexer(fmt))
 
@@ -16,41 +19,46 @@ class Struct:
             # going to want to distribute the byte order to sub-strings
             ctx.end = lexed.txt[ctx.ind]
             ctx.ind += 1
-        return self.rec_lex(lexed, ctx, cuts)
+        return self._rec_lex(lexed, ctx, cuts)
 
-    def rec_lex(self, lexed, ctx, cuts):
+    def _rec_lex(self, lexed, ctx, cuts):
         ret = odict()
-        for end, close in cuts:
+        # I have a few compiler/language books in my reading queue. I assume
+        # once I've read those, I'll want to tear this right up and do it
+        # proper. Oh well, go with this for now.
+        # TODO can this functionality be broken up, with _rec_lex just acting as
+        # a dispatcher?
+        for end, delim in cuts:
             subfmt = lexed.txt[ctx.ind:end]
 
             if ctx.match == ']':
                 # subfmt is a name, we just return it
-                if close != ']':
+                if delim != ']':
                     raise Exception('unclosed bracket')
                 ctx.ind = end + 1
                 ctx.dep -= 1
                 return subfmt
 
-            elif close == '[':
+            elif delim == '[':
                 if s.calcsize(subfmt) > 0:
                     ret.extend(self._struct(ctx.end, subfmt))
                 # get the name, apply it to the last member of ret
-                subctx = ctx.fork(end+1, lexed.delims[close])
-                name = self.rec_lex(lexed, subctx, cuts)
+                subctx = ctx.fork(end+1, lexed.delims[delim])
+                name = self._rec_lex(lexed, subctx, cuts)
                 ctx.ind = subctx.ind
                 # this will fail if the member already has a name
                 # FIXME that is correct, but it won't be friendly
                 ret[name] = ret[len(ret) - 1]
                 del ret[len(ret) - 2]
 
-            elif close == '(':
+            elif delim == '(':
                 if s.calcsize(subfmt) > 0:
                     ret.extend(self._struct(ctx.end, subfmt))
-                subctx = ctx.fork(end+1, lexed.delims[close])
-                ret.append(self.rec_lex(lexed, subctx, cuts))
+                subctx = ctx.fork(end+1, lexed.delims[delim])
+                ret.append(self._rec_lex(lexed, subctx, cuts))
                 ctx.ind = subctx.ind
 
-            elif close is None:
+            elif delim is None:
                 # at the end of the format string, so should not be nested at
                 # all
                 if ctx.dep != 0:
@@ -64,12 +72,12 @@ class Struct:
                 # format string
                 ctx.ind = end + 1
                 ctx.dep += 1
-                ctx.match = lexed.delims[close]
-                repeated = self.rec_lex(lexed, ctx, cuts)
+                ctx.match = lexed.delims[delim]
+                repeated = self._rec_lex(lexed, ctx, cuts)
                 for i in range(int(subfmt)):
                     ret.append(repeated)
 
-            elif close == ctx.match:
+            elif delim == ctx.match:
                 # we are about to pop out of our current level
                 if s.calcsize(subfmt) > 0:
                     ret.extend(self._struct(ctx.end, subfmt))
@@ -79,6 +87,10 @@ class Struct:
 
     def _struct(self, endian, fmt):
         # not pretty, but can be improved later
+        # need to split up a classical format string into individual fields so
+        # that (a) their indices work out as expected in the output odict, and
+        # (b) naming only binds to the las unit of a string. Grouping can still
+        # be done using parens, it's just not assumed.
         ret = []
         count = 0
         for c in fmt:
@@ -88,6 +100,7 @@ class Struct:
                 if count == 0:
                     count = 1
                 if c == 's':
+                    # a number preceeding `s` is a length, not a repetition
                     ret.append(s.Struct(endian + str(count) + c))
                 else:
                     ret.extend([s.Struct(endian + c)] * count)
@@ -96,12 +109,12 @@ class Struct:
 
     def unpack(self, buff):
         # buff needs to be a destruct.buf subclass
+        # TODO can this be more duck-typing and less strict-inheritance
         if not issubclass(buff.__class__, buf):
             buff = strbuf(buff)
         return self._rec_unpack(buff, self.fmt)
 
     def _rec_unpack(self, buff, fmt_tree):
-        # can pre-allocate ret, if it makes a difference
         ret = odict()
         for k in fmt_tree:
             st = fmt_tree[k]
@@ -110,7 +123,7 @@ class Struct:
             else:
                 unpacked = self._rec_unpack(buff, st)
             if len(unpacked) > 0:
-                # TODO ugly shit here, also ther may be legit cases for this
+                # TODO ugly shit here, also there may be legit cases for this
                 if type(unpacked) is tuple and len(unpacked) == 1:
                     unpacked = unpacked[0]
                 ret[k] = unpacked
@@ -191,10 +204,17 @@ class filebuf(buf):
         return buffer(self._f.read(size))
 
 class odict(OrderedDict):
+    # extension of an OrderedDict. Values can be added without keys, they will
+    # be assigned a positional value as a key. ie if len(<odict>) = n,
+    # <odict>.append(val) <=> <odict.[n] = val. Otherwise, as convention, use
+    # alphanumeric strings as keys.
+    # TODO may want to add positional lookup, even for keyed values. Wouldn't be
+    # hard, <odict>.__getitem__(n) = <odict>.values()[n]
     @staticmethod
     def from_list(ls):
-        return odict(zip(range(len(ls)), ls))
+        return odict(enumerate(ls))
 
+    # add in .append() and .extend() so that it can act kind of list-like.
     def append(self, val):
         self.__setitem__(len(self), val)
 
@@ -206,6 +226,7 @@ class odict(OrderedDict):
         return '{' + ', '.join([self._fmt(k, self[k]) for k in self]) + '}'
 
     def _fmt(self, k, v):
+        # values with positional keys don't need the keys printed in __repr__
         if isinstance(k, int):
             return repr(v)
         return k + ': ' + repr(v)
@@ -222,11 +243,16 @@ class context:
 
 class lexer:
     def __init__(self, txt, comment='#', delims='()[]'):
+        # TODO re-work this part so that we can deliver helpful error messages
+        # (with line numbers, original context, etc)
         self.txt = self.strip_comments(txt, comment)
         self.txt = self.txt.replace(' ', '').replace('\n', '').replace('\t', '')
         self.cuts = [(n, char) for n, char in enumerate(self.txt)
                      if char in delims]
+        # add in a None tag to signal EOF
         self.cuts.append((len(self.txt), None))
+        # for now, delimiters need to be passed in matched pairs. Just easier
+        # for the end user than a dict, I think.
         self.delims = dict(zip(delims[::2], delims[1::2]))
 
     def strip_comments(self, txt, comment='#'):
