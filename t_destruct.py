@@ -135,3 +135,9 @@ class unpackTests(TestCase):
         self.assertRaises(Exception, d.Struct, '(c))')
         self.assertRaises(Exception, d.Struct, 'c[name(I)]')
         self.assertRaises(Exception, d.Struct, 'c[name')
+
+    def test_whitespace(self):
+        self.assertEqual(d.unpack('<\n\n12s [name]\n 28x\n\tI \n\t[pid]\n\n\n',
+                                  self.buf),
+                         d.odict([('name', 'Jonny Normal'),
+                                  ('pid', 0x12e)]))
