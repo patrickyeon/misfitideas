@@ -115,3 +115,15 @@ class unpackTests(TestCase):
         self.assertEqual(p_id, 0x12e)
         self.assertEqual(points, ls_odict([0, 1, 5, 5, 16, 8, 24] + ([0] * 35)))
         self.assertEqual(rank, 4)
+
+    def test_naming(self):
+        self.assertEqual(d.unpack('<40s[name]', self.buf),
+                         d.odict(name='Jonny Normal'+(28*'\x00')))
+        self.buf.pos = 0
+        expected = d.odict()
+        expected.append('Jonny Normal' + (28 * '\x00'))
+        expected['pid'] = 0x12e
+        expected['points'] = ls_odict([0, 1, 5, 5, 16, 8, 24] + ([0] * 35))
+        expected.append(4)
+        self.assertEqual(d.unpack('<40s I [pid]  (42B)[points] I', self.buf),
+                         expected)
