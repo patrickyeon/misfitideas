@@ -20,7 +20,6 @@ class Struct:
 
     def rec_lex(self, lexed, ctx, cuts):
         ret = odict()
-        # TODO ctx needs to fork() everywhere
         for end, close in cuts:
             subfmt = lexed.txt[ctx.ind:end]
 
@@ -36,10 +35,7 @@ class Struct:
                 if s.calcsize(subfmt) > 0:
                     ret.extend(self._struct(ctx.end, subfmt))
                 # get the name, apply it to the last member of ret
-                subctx = ctx.fork()
-                subctx.ind = end + 1
-                subctx.dep += 1
-                subctx.match = lexed.delims[close]
+                subctx = ctx.fork(end+1, lexed.delims[close])
                 name = self.rec_lex(lexed, subctx, cuts)
                 ctx.ind = subctx.ind
                 # this will fail if the member already has a name
@@ -50,10 +46,7 @@ class Struct:
             elif close == '(':
                 if s.calcsize(subfmt) > 0:
                     ret.extend(self._struct(ctx.end, subfmt))
-                subctx = ctx.fork()
-                subctx.ind = end + 1
-                subctx.dep += 1
-                subctx.match = lexed.delims[close]
+                subctx = ctx.fork(end+1, lexed.delims[close])
                 ret.append(self.rec_lex(lexed, subctx, cuts))
                 ctx.ind = subctx.ind
 
@@ -214,17 +207,17 @@ class odict(OrderedDict):
 
     def _fmt(self, k, v):
         if isinstance(k, int):
-            return str(v)
-        return k + ': ' + str(v)
+            return repr(v)
+        return k + ': ' + repr(v)
 
 class context:
     def __init__(self, index=0, depth=0, endianness='@'):
         self.ind, self.dep, self.end = index, depth, endianness
         self.match = None
 
-    def fork(self):
-        ret = context(self.ind, self.dep, self.end)
-        ret.match = self.match
+    def fork(self, index, newmatch):
+        ret = context(index, self.dep + 1, self.end)
+        ret.match = newmatch
         return ret
 
 class lexer:
