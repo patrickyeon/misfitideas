@@ -127,3 +127,11 @@ class unpackTests(TestCase):
         expected.append(4)
         self.assertEqual(d.unpack('<40s I [pid]  (42B)[points] I', self.buf),
                          expected)
+
+    def test_unmatched_parens(self):
+        # TODO tighten up the exception type, once it's been sub-classed in the
+        # destruct code
+        self.assertRaises(Exception, d.Struct, '(c(c)')
+        self.assertRaises(Exception, d.Struct, '(c))')
+        self.assertRaises(Exception, d.Struct, 'c[name(I)]')
+        self.assertRaises(Exception, d.Struct, 'c[name')
