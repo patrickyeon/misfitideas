@@ -89,7 +89,7 @@ class Struct:
         # not pretty, but can be improved later
         # need to split up a classical format string into individual fields so
         # that (a) their indices work out as expected in the output odict, and
-        # (b) naming only binds to the las unit of a string. Grouping can still
+        # (b) naming only binds to the last unit of a string. Grouping can still
         # be done using parens, it's just not assumed.
         ret = []
         count = 0
@@ -126,7 +126,18 @@ class Struct:
                 # TODO ugly shit here, also there may be legit cases for this
                 if type(unpacked) is tuple and len(unpacked) == 1:
                     unpacked = unpacked[0]
-                ret[k] = unpacked
+                # don't keep the key for a positionally-keyed value. Don't-care
+                # bytes (`x`) in a format string are dropped on the output, so
+                # the counting can be put off.
+                if type(k) is int:
+                    ret.append(unpacked)
+                # This does mean that internal fmt representative will not line
+                # up with output structure (eg <odict>.fmt[3] may not be the
+                # element that output <odict>.unpack(<str>)[3]). Consider
+                # <odict>.fmt an implementation detail, unpacked output is
+                # ordered according to the format string passed at construction.
+                else:
+                    ret[k] = unpacked
         return ret
 
 def unpack(fmt, buff):

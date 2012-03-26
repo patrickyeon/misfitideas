@@ -141,3 +141,20 @@ class unpackTests(TestCase):
                                   self.buf),
                          d.odict([('name', 'Jonny Normal'),
                                   ('pid', 0x12e)]))
+
+    def test_comments(self):
+        self.assertEqual(d.unpack('<5s #6s\n x\n#  s\n 6s', self.buf),
+                         ls_odict(['Jonny', 'Normal']))
+        self.buf.pos = 0
+        self.assertEqual(d.unpack('<(5s\n x #ignore space\n 6s)[name]',
+                                  self.buf),
+                         d.odict(name=ls_odict(['Jonny', 'Normal'])))
+
+    def test_dont_care(self):
+        self.assertEqual(d.unpack('<5s x 6s', self.buf),
+                         ls_odict(['Jonny', 'Normal']))
+        self.buf.pos = 0
+        self.assertEqual(d.unpack('<3s[nickname] 3x c[initial] 5s', self.buf),
+                         d.odict([('nickname', 'Jon'),
+                                  ('initial', 'N'),
+                                  (2, 'ormal')]))
