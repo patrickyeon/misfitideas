@@ -9,7 +9,8 @@ class Struct:
         to enclose a name for the immediately previous 'parse unit'. Names
         should (I would say must, but it's not properly enforced yet) be
         alphanumeric.'''
-    def __init__(self, fmt):
+    def __init__(self, fmt, funcs={}):
+        self.funcs = funcs
         self.fmt = self.lex_build(lexer(fmt))
 
     def lex_build(self, lexed):
@@ -67,6 +68,15 @@ class Struct:
                     ret.extend(self._struct(ctx.end, subfmt))
                 return ret
 
+            elif delim == '$':
+                if s.calcsize(ctx.end + subfmt) > 0:
+                    ret.extend(self._struct(ctx.end, subfmt))
+                i, c = cuts.next()
+                ctx.ind = i + 1
+                if c != '$':
+                    raise Exception('brackets not allowed in $$')
+                ret.append(self.funcs[lexed.txt[end + 1:i]])
+
             elif subfmt.isdigit():
                 # subfmt is a repetition count for the next portion of the
                 # format string
@@ -120,6 +130,8 @@ class Struct:
             st = fmt_tree[k]
             if hasattr(st, 'unpack'):
                 unpacked = st.unpack(buff.read(st.size))
+            elif callable(st):
+                unpacked = st(buff)
             else:
                 unpacked = self._rec_unpack(buff, st)
             if len(unpacked) > 0:
@@ -253,7 +265,7 @@ class context:
         return ret
 
 class lexer:
-    def __init__(self, txt, comment='#', delims='()[]'):
+    def __init__(self, txt, comment='#', delims='()[]$$'):
         # TODO re-work this part so that we can deliver helpful error messages
         # (with line numbers, original context, etc)
         self.txt = self.strip_comments(txt, comment)
