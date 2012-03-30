@@ -158,3 +158,19 @@ class unpackTests(TestCase):
                          d.odict([('nickname', 'Jon'),
                                   ('initial', 'N'),
                                   (2, 'ormal')]))
+
+    def test_funcs(self):
+        def five(buff):
+            return str(buff.read(5))
+        def four(buff):
+            return str(buff.read(4))
+        funcs = {'five': five, 'four': four}
+        st = d.Struct('$five$ $four$ $five$ $four$ $four$', funcs)
+        self.assertEqual(st.unpack('llamabirdrhinobearwolf'),
+                         ls_odict('llama bird rhino bear wolf'.split()))
+
+    def test_invalid_funcs(self):
+        for f in 'fo(o foo[ foo) f]oo'.split():
+            self.assertRaises(Exception, d.Struct, '$%s$' % f)
+        self.assertRaises(KeyError, d.Struct, '$foo$')
+        self.assertRaises(Exception, d.Struct, '$foo')
