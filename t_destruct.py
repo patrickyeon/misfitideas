@@ -51,6 +51,17 @@ class strbufTests(TestCase):
         self.buf.pos = 12
         self.assertEqual(maxpos - 12, len(self.buf))
 
+class structTests(TestCase):
+    def test_funcs(self):
+        def five(buff):
+            return str(buff.read(5))
+        def four(buff):
+            return str(buff.read(4))
+        funcs = {'five': five, 'four': four}
+        st = d.Struct('$five$ $four$ $five$ $four$ $four$', funcs)
+        self.assertEqual(st.unpack('llamabirdrhinobearwolf'),
+                         ls_odict('llama bird rhino bear wolf'.split()))
+
 class unpackTests(TestCase):
     def setUp(self):
         #struct scorecard{
